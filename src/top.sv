@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2022 Leo Moser <leo.moser@pm.me>
+// SPDX-FileCopyrightText: © 2024 Leo Moser <leo.moser@pm.me>
 // SPDX-License-Identifier: Apache-2.0
 
 `timescale 1ns/1ps
@@ -14,14 +14,17 @@
 */
 
 module top (
-    input  logic clk,
-    input  logic reset_n,
+    input  logic clk_i,
+    input  logic rst_ni,
 
     // SPI signals
     input  logic spi_sclk,
     input  logic spi_mosi,
     output logic spi_miso,
     input  logic spi_cs,
+
+    // SPI Mode
+    input  logic spi_mode,
 
     // SVGA signals
     output logic [5:0] rrggbb,
@@ -33,7 +36,7 @@ module top (
 
     /*
         SVGA Timing for 800x600 60 Hz
-        clock = 40 MHz or clock = 10 MHz
+        clock = 40 MHz
     */
 
     localparam WIDTH    = 800;
@@ -66,6 +69,9 @@ module top (
     localparam bit [5:0] COLOR3_DEFAULT = 6'b001100;
     localparam bit [5:0] COLOR4_DEFAULT = 6'b101100;
     
+    localparam bit [7:0] SPRITE_X_DEFAULT = 0;
+    localparam bit [7:0] SPRITE_Y_DEFAULT = 0;
+    
     localparam bit [1:0] BACKGROUND_DEFAULT         = 2'd2;
     localparam bit       ENABLE_MOVEMENT_DEFAULT    = 1'b1;
     localparam bit       ENABLE_SPRITE_BG_DEFAULT   = 1'b0;
@@ -83,20 +89,6 @@ module top (
     
     logic signed [$clog2(HTOTAL) : 0] counter_h;
     logic signed [$clog2(VTOTAL) : 0] counter_v;
-
-    logic inc_1_or_4;
-
-    always_ff @(posedge clk, negedge reset_n) begin
-        if (!reset_n) begin
-            inc_1_or_4 <= REDUCED_FREQ_DEFAULT;
-        end else begin
-            // Only ever assign at next_frame
-            // to prevent glitches
-            if (next_frame) begin
-                inc_1_or_4 <= misc[4];
-            end
-        end
-    end
     
     logic hblank;
     logic vblank;
@@ -110,10 +102,9 @@ module top (
         .TOTAL          (HTOTAL),
         .POLARITY       (1)
     ) timing_hor (
-        .clk        (clk),
+        .clk        (clk_i),
         .enable     (1'b1),
-        .reset_n    (reset_n),
-        .inc_1_or_4 (inc_1_or_4),
+        .reset_n    (rst_ni),
         .sync       (hsync),
         .blank      (hblank),
         .next       (next_vertical),
@@ -129,10 +120,9 @@ module top (
         .TOTAL          (VTOTAL),
         .POLARITY       (1)
     ) timing_ver (
-        .clk        (clk),
+        .clk        (clk_i),
         .enable     (next_vertical),
-        .reset_n    (reset_n),
-        .inc_1_or_4 (1'b0),
+        .reset_n    (rst_ni),
         .sync       (vsync),
         .blank      (vblank),
         .next       (next_frame),
@@ -142,8 +132,8 @@ module top (
     logic [7:0] cur_time;
     logic time_dir;
 
-    always_ff @(posedge clk, negedge reset_n) begin
-        if (!reset_n) begin
+    always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (!rst_ni) begin
             cur_time <= '0;
             time_dir <= '0;
         end else begin
@@ -162,13 +152,91 @@ module top (
             end
         end
     end
+    
+    // Synchronizer to prevent metastability
+    logic spi_mosi_sync;
+    synchronizer  #(
+        .FF_COUNT(2)
+    ) synchronizer_spi_mosi (
+        .clk        (clk_i),
+        .reset_n    (rst_ni),
+        .in         (spi_mosi),
+        .out        (spi_mosi_sync)
+    );
+
+    logic spi_cs_sync;
+    synchronizer  #(
+        .FF_COUNT(2)
+    ) synchronizer_spi_cs (
+        .clk        (clk_i),
+        .reset_n    (rst_ni),
+        .in         (spi_cs),
+        .out        (spi_cs_sync)
+    );
+
+    logic spi_sclk_sync;
+    synchronizer  #(
+        .FF_COUNT(2)
+    ) synchronizer_spi_sclk (
+        .clk        (clk_i),
+        .reset_n    (rst_ni),
+        .in         (spi_sclk),
+        .out        (spi_sclk_sync)
+    );
+    
+
+    /*
+        SPI Receiver
+        
+        cpol       = False,
+        cpha       = True,
+        msb_first  = True,
+        word_width = 8,
+        cs_active_low = True
+    */
+    
+    logic [5:0] color1;
+    logic [5:0] color2;
+    logic [5:0] color3;
+    logic [5:0] color4;
+    logic [7:0] sprite_x_reg;
+    logic [7:0] sprite_y_reg;
+    logic [4:0] misc;
+    
+    spi_receiver #(
+        .COLOR1_DEFAULT (COLOR1_DEFAULT),
+        .COLOR2_DEFAULT (COLOR2_DEFAULT),
+        .COLOR3_DEFAULT (COLOR3_DEFAULT),
+        .COLOR4_DEFAULT (COLOR4_DEFAULT),
+        .SPRITE_X_DEFAULT (SPRITE_X_DEFAULT),
+        .SPRITE_Y_DEFAULT (SPRITE_Y_DEFAULT),
+        .MISC_DEFAULT   (MISC_DEFAULT)
+    ) spi_receiver_inst (
+        .clk_i      (clk_i), 
+        .rst_ni     (rst_ni),
+
+        .enable     (spi_mode == 1'b0),
+
+        .spi_sclk   (spi_sclk_sync),
+        .spi_mosi   (spi_mosi_sync),
+        .spi_miso   (spi_miso),
+        .spi_cs     (spi_cs_sync),
+
+        .color1     (color1),
+        .color2     (color2),
+        .color3     (color3),
+        .color4     (color4),
+        .sprite_x   (sprite_x_reg),
+        .sprite_y   (sprite_y_reg),
+        .misc       (misc)
+    );
 
     /*
         Sprite Movement
     */
     
-    logic [7:0] sprite_x;
-    logic [7:0] sprite_y;
+    logic [7:0] sprite_x_mov;
+    logic [7:0] sprite_y_mov;
     
     sprite_movement #(
         .SPRITE_WIDTH  (SPRITE_WIDTH),
@@ -176,20 +244,21 @@ module top (
         .WIDTH_SMALL   (WIDTH_SMALL),
         .HEIGHT_SMALL  (HEIGHT_SMALL)
     ) sprite_movement_inst (
-        .clk            (clk),
-        .reset_n        (reset_n),
+        .clk            (clk_i),
+        .reset_n        (rst_ni),
         
         .enable_movement (misc[2]),
         .next_frame     (next_frame),
         
-        .shift_x        (shift_x),
-        .data_in_x      (spi_mosi_sync),
-        .shift_y        (shift_y),
-        .data_in_y      (spi_mosi_sync),
-        
-        .sprite_x       (sprite_x),
-        .sprite_y       (sprite_y)
+        .sprite_x       (sprite_x_mov),
+        .sprite_y       (sprite_y_mov)
     );
+    
+    logic [7:0] sprite_x;
+    logic [7:0] sprite_y;
+    
+    assign sprite_x = misc[2] ? sprite_x_mov : sprite_x_reg;
+    assign sprite_y = misc[2] ? sprite_y_mov : sprite_y_reg;
     
     logic signed [$clog2(HTOTAL) - 3 : 0] counter_h_small;
     logic signed [$clog2(VTOTAL) - 3 : 0] counter_v_small;
@@ -213,19 +282,29 @@ module top (
         Sprite Data
     */
     
-    logic sprite_data;
     logic sprite_shift;
+    logic sprite_data;
+    
+    // Detect spi_clk edge
+    logic spi_sclk_delayed;
+    always_ff @(posedge clk_i) begin
+        spi_sclk_delayed <= spi_sclk_sync;
+    end
+    
+    logic spi_sclk_falling, spi_sclk_rising;
+    assign spi_sclk_rising = !spi_sclk_delayed && spi_sclk_sync;
+    assign spi_sclk_falling = spi_sclk_delayed && !spi_sclk_sync;
     
     sprite_data #(
         .WIDTH  (SPRITE_WIDTH),
         .HEIGHT (SPRITE_HEIGHT)
     ) sprite_data_inst (
-        .clk        (clk),
-        .reset_n    (reset_n),
-        .shiftf     (sprite_shift || spi_sprite_shift),
+        .clk_i      (clk_i),
+        .rst_ni     (rst_ni),
+        .shiftf     (sprite_shift || (spi_mode == 1'b1 && !spi_cs_sync && spi_sclk_falling)),
         .data_out   (sprite_data),
         .data_in    (spi_mosi_sync),
-        .load       (spi_sprite_mode)
+        .load       (spi_mode == 1'b1)
     );
     
     /*
@@ -237,12 +316,12 @@ module top (
     logic end_big_pixel;
     
     assign start_big_line = counter_v[2:0] == 3'b000;
-    assign end_big_pixel   = (inc_1_or_4 == 1'b0) ? counter_h[2:0] == 3'b111 : counter_h[2] == 1'b1;
+    assign end_big_pixel   = counter_h[2:0] == 3'b111;
     
     sprite_access #(
         .WIDTH  (SPRITE_WIDTH)
     ) sprite_access_inst (
-        .clk        (clk),
+        .clk            (clk_i),
 
         .new_line       (start_big_line),
         .sprite_access  (end_big_pixel),
@@ -262,8 +341,8 @@ module top (
     
     logic [1:0] bg_sel;
 
-    always_ff @(posedge clk, negedge reset_n) begin
-        if (!reset_n) begin
+    always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (!rst_ni) begin
             bg_sel <= BACKGROUND_DEFAULT;
         end else begin
             // Only ever assign at next_frame
@@ -311,60 +390,6 @@ module top (
             rrggbb = '0;
         end
     end
-    
-    /*
-        SPI Receiver
-        
-        cpol       = False,
-        cpha       = True,
-        msb_first  = True,
-        word_width = 8,
-        cs_active_low = True
-    */
-    
-    logic [5:0] color1;
-    logic [5:0] color2;
-    logic [5:0] color3;
-    logic [5:0] color4;
-    logic [4:0] misc;
-    
-    logic spi_sprite_shift;
-    logic spi_sprite_mode;
-    logic spi_mosi_sync;
-    
-    logic shift_x;
-    logic shift_y;
-    
-    spi_receiver #(
-        .COLOR1_DEFAULT (COLOR1_DEFAULT),
-        .COLOR2_DEFAULT (COLOR2_DEFAULT),
-        .COLOR3_DEFAULT (COLOR3_DEFAULT),
-        .COLOR4_DEFAULT (COLOR4_DEFAULT),
-        .MISC_DEFAULT   (MISC_DEFAULT)
-    ) spi_receiver_inst (
-        .clk        (clk), 
-        .reset_n    (reset_n),
-
-        .spi_sclk   (spi_sclk),
-        .spi_mosi   (spi_mosi),
-        .spi_miso   (spi_miso),
-        .spi_cs     (spi_cs),
-        
-        .sprite_data        (sprite_data),
-        
-        .spi_sprite_shift   (spi_sprite_shift),
-        .spi_sprite_mode    (spi_sprite_mode),
-        .spi_mosi_sync      (spi_mosi_sync),
-        
-        .shift_x    (shift_x),
-        .shift_y    (shift_y),
-        
-        .color1     (color1),
-        .color2     (color2),
-        .color3     (color3),
-        .color4     (color4),
-        .misc       (misc)
-    );
 
 
 endmodule

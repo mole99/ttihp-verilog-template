@@ -15,7 +15,6 @@ module timing #(
     input  logic clk,       // clock
     input  logic enable,    // enable counting
     input  logic reset_n,   // reset counter
-    input  logic inc_1_or_4,// increment by 1 or by 4
     output logic sync,      // 1'b1 if in sync region
     output logic blank,     // 1'b1 if in blank region
     output logic next,      // 1'b1 if max value is reached
@@ -34,11 +33,7 @@ module timing #(
             counter <= -FRONT_PORCH - SYNC_PULSE - BACK_PORCH;
         end else begin
             if (enable) begin
-                if (inc_1_or_4 == 1'b0) begin
-                    counter <= counter + 1;
-                end else begin
-                    counter <= counter + 4;
-                end
+                counter <= counter + 1;
                 if (next) begin
                     counter <= -FRONT_PORCH - SYNC_PULSE - BACK_PORCH;
                 end

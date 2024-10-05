@@ -15,12 +15,7 @@ module sprite_movement #(
     
     input  logic enable_movement,   // enable movement of the sprite
     input  logic next_frame,        // frame was completed
-    
-    input  logic shift_x,           // shift new x position
-    input  logic data_in_x,         // x position data
-    input  logic shift_y,           // shift new y position
-    input  logic data_in_y,         // y position data
-    
+
     output logic [7:0] sprite_x,    // current x position
     output logic [7:0] sprite_y     // current y position
 );
@@ -75,16 +70,6 @@ module sprite_movement #(
                         sprite_y_dir <= 0;
                     end
                 end
-            end
-            
-            // Shift in new x position
-            if (shift_x) begin
-                sprite_x <= {sprite_x[6:0], data_in_x};
-            end
-            
-            // Shift in new y position
-            if (shift_y) begin
-                sprite_y <= {sprite_y[6:0], data_in_y};
             end
         end
     end
