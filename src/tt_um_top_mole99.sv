@@ -30,8 +30,8 @@ module tt_um_top_mole99 (
     // TODO async reset, sync deassert
 
     top top_inst (
-        .clk        (clk),
-        .reset_n    (rst_n),
+        .clk_i      (clk),
+        .rst_ni     (rst_n),
 
         .spi_mode   (spi_mode),
 
