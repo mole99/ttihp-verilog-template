@@ -98,7 +98,7 @@ module spi_receiver #(
         
         // Clock gating
         logic gclk;
-        sg13g2_lgcp_1 sg13g2_lgcp_1_inst (reg_gclk[i], reg_enable[i] && load_register, clk_i);
+        sg13g2_lgcp_1 sg13g2_lgcp_1_inst (clk_i, reg_enable[i] && load_register, reg_gclk[i]); //(reg_gclk[i], reg_enable[i] && load_register, clk_i);
         
         // or use sg13g2_lgcp_1 sg13g2_lgcp_1_inst (GCLK, GATE, CLK);
         always_latch begin

@@ -37,7 +37,7 @@ module sprite_data #(
 
     // Clock gating
     logic gclk;
-    sg13g2_lgcp_1 sg13g2_lgcp_1_inst (gclk, shiftf, clk_i);
+    sg13g2_lgcp_1 sg13g2_lgcp_1_inst (clk_i, shiftf, gclk); //(gclk, shiftf, clk_i);
 
     // Implement the shift register
     always_ff @(posedge gclk, negedge rst_ni) begin
