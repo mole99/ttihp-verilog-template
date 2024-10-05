@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2022 Leo Moser <leo.moser@pm.me>
+// SPDX-FileCopyrightText: © 2024 Leo Moser <leo.moser@pm.me>
 // SPDX-License-Identifier: Apache-2.0
 
 `timescale 1ns/1ps
@@ -8,8 +8,8 @@ module sprite_data #(
     parameter WIDTH,        // width of the sprite
     parameter HEIGHT        // height of the sprite
 )(
-    input  logic clk,       // clock
-    input  logic reset_n,   // reset active low
+    input  logic clk_i,       // clock
+    input  logic rst_ni,   // reset active low
     input  logic shiftf,    // shift sprite data
     output logic data_out,  // output pixel data
     input  logic load,      // load new sprite data
@@ -35,9 +35,17 @@ module sprite_data #(
     logic new_sprite_data;
     assign new_sprite_data = load ? data_in : sprite_data[0];
 
+    // Clock gating
+    logic gclk;
+    sg13g2_lgcp_1 sg13g2_lgcp_1_inst (
+        .GCLK   (gclk),
+        .GATE   (shiftf),
+        .CLK    (clk_i)
+    );
+
     // Implement the shift register
-    always_ff @(posedge clk, negedge reset_n) begin
-        if (!reset_n) begin
+    always_ff @(posedge gclk, negedge rst_ni) begin
+        if (!rst_ni) begin
 
             // By default all pixels are background
             sprite_data <= '0;
@@ -60,10 +68,10 @@ module sprite_data #(
             sprite_data[143: 132] <= 12'b000011111000;
 
         end else begin
-            if (shiftf) begin
+            //if (shiftf) begin
                 // Shift the whole sprite
                 sprite_data <= {new_sprite_data, sprite_data[WIDTH*HEIGHT-1:1]};
-            end
+            //end
         end
     end
     

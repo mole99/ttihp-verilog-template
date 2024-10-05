@@ -1,88 +1,66 @@
-// SPDX-FileCopyrightText: © 2022 Leo Moser <leo.moser@pm.me>
+// SPDX-FileCopyrightText: © 2024 Leo Moser <leo.moser@pm.me>
 // SPDX-License-Identifier: Apache-2.0
 
 `timescale 1ns/1ps
 `default_nettype none
 
 module spi_receiver #(
+    parameter NUM_REGISTERS = 7,
+    parameter LEN_REGISTER = 8,
+
     parameter COLOR1_DEFAULT,   // color1 default value
     parameter COLOR2_DEFAULT,   // color2 default value
     parameter COLOR3_DEFAULT,   // color3 default value
     parameter COLOR4_DEFAULT,   // color4 default value
+    
+    parameter SPRITE_X_DEFAULT, // sprite x default value
+    parameter SPRITE_Y_DEFAULT, // sprite y default value
+    
     parameter MISC_DEFAULT      // misc default value
 )(
-    input  logic clk,           // clock
-    input  logic reset_n,       // reset active low
+    input  logic clk_i,         // clock
+    input  logic rst_ni,        // reset active low
+    
+    input  logic enable,        // enable SPI receiver
     
     // SPI signals
     input  logic spi_sclk,
     input  logic spi_mosi,
     output logic spi_miso,
     input  logic spi_cs,
-    
-    input  logic sprite_data,       // current sprite data
-    output logic spi_sprite_shift,  // shift pulse
-    output logic spi_sprite_mode,   // shift new data into sprite
-    output logic spi_mosi_sync,     // spi input data
-    
-    output logic shift_x,           // shift new x position
-    output logic shift_y,           // shift new y position
-    
+
     // Output register
     output logic [5:0] color1,      // color1 register
     output logic [5:0] color2,      // color2 register
     output logic [5:0] color3,      // color3 register
     output logic [5:0] color4,      // color4 register
+    output logic [7:0] sprite_x,    // sprite x register
+    output logic [7:0] sprite_y,    // sprite y register
     output logic [4:0] misc         // miscellaneous register
 );
-    
-    // Synchronizer to prevent metastability
-
-    synchronizer  #(
-        .FF_COUNT(2)
-    ) synchronizer_spi_mosi (
-        .clk        (clk),
-        .reset_n    (reset_n),
-        .in         (spi_mosi),
-        .out        (spi_mosi_sync)
-    );
-
-    logic spi_cs_sync;
-    synchronizer  #(
-        .FF_COUNT(2)
-    ) synchronizer_spi_cs (
-        .clk        (clk),
-        .reset_n    (reset_n),
-        .in         (spi_cs),
-        .out        (spi_cs_sync)
-    );
-
-    logic spi_sclk_sync;
-    synchronizer  #(
-        .FF_COUNT(2)
-    ) synchronizer_spi_sclk (
-        .clk        (clk),
-        .reset_n    (reset_n),
-        .in         (spi_sclk),
-        .out        (spi_sclk_sync)
-    );
-
-    
     // Detect spi_clk edge
-    
     logic spi_sclk_delayed;
-    always_ff @(posedge clk) begin
-        spi_sclk_delayed <= spi_sclk_sync;
+    always_ff @(posedge clk_i) begin
+        spi_sclk_delayed <= spi_sclk;
     end
     
     logic spi_sclk_falling, spi_sclk_rising;
-    assign spi_sclk_rising = !spi_sclk_delayed && spi_sclk_sync;
-    assign spi_sclk_falling = spi_sclk_delayed && !spi_sclk_sync;
+    assign spi_sclk_rising = !spi_sclk_delayed && spi_sclk;
+    assign spi_sclk_falling = spi_sclk_delayed && !spi_sclk;
     
     // State Machine
 
-    logic [2:0] spi_cmd;
+    // Active SPI command
+    // #bits depend on number of registers
+    logic [$clog2(NUM_REGISTERS)-1:0] spi_cmd;
+
+    // SPI data
+    logic [LEN_REGISTER-1:0] spi_data;
+    
+    // Count up to 8 bits
     logic [2:0] spi_cnt;
+    
+    // 0 = cmd, 1 = data
     logic spi_mode;
     
     typedef enum bit [2:0] {
@@ -96,99 +74,98 @@ module spi_receiver #(
         CMD_MISC        = 3'd7
     } spi_cmds_t;
     
-    logic spi_cmd_sprite_data;
-    logic spi_cmd_color1;
-    logic spi_cmd_color2;
-    logic spi_cmd_color3;
-    logic spi_cmd_color4;
-    logic spi_cmd_sprite_x;
-    logic spi_cmd_sprite_y;
-    logic spi_cmd_misc;
+    logic load_register;
     
-    assign spi_cmd_sprite_data  = spi_cmd == CMD_SPRITE_DATA;
-    assign spi_cmd_color1       = spi_cmd == CMD_COLOR1;
-    assign spi_cmd_color2       = spi_cmd == CMD_COLOR2;
-    assign spi_cmd_color3       = spi_cmd == CMD_COLOR3;
-    assign spi_cmd_color4       = spi_cmd == CMD_COLOR4;
-    assign spi_cmd_sprite_x     = spi_cmd == CMD_SPRITE_X;
-    assign spi_cmd_sprite_y     = spi_cmd == CMD_SPRITE_Y;
-    assign spi_cmd_misc         = spi_cmd == CMD_MISC;
+    logic [NUM_REGISTERS-1:0] reg_enable;
+    logic [NUM_REGISTERS-1:0] reg_gclk;
     
-    logic first_data_sprite;
+    logic [LEN_REGISTER-1:0] registers [NUM_REGISTERS];
     
-    always_ff @(posedge clk, negedge reset_n) begin
-        if (!reset_n) begin
+    logic [LEN_REGISTER-1:0] defaults [NUM_REGISTERS];
+    
+    assign defaults[0] = COLOR1_DEFAULT;
+    assign defaults[1] = COLOR2_DEFAULT;
+    assign defaults[2] = COLOR3_DEFAULT;
+    assign defaults[3] = COLOR4_DEFAULT;
+    assign defaults[4] = SPRITE_X_DEFAULT;
+    assign defaults[5] = SPRITE_Y_DEFAULT;
+    assign defaults[6] = MISC_DEFAULT;
+    
+    generate
+    
+    for (genvar i=0; i<NUM_REGISTERS; i++) begin : regs
+        assign reg_enable[i] = spi_cmd == i;
+        
+        // Clock gating
+        sg13g2_lgcp_1 sg13g2_lgcp_1_inst (
+            .GCLK   (reg_gclk[i]),
+            .GATE   (reg_enable[i] && load_register),
+            .CLK    (clk_i)
+        );
+        
+        // FF
+        always_ff @(posedge reg_gclk[i], negedge rst_ni) begin
+            if (!rst_ni) begin
+                registers[i] <= defaults[i];
+            end else begin
+                registers[i] <= spi_data;
+            end
+        end
+        
+        /* TODO use latches
+        always_latch begin
+            if (!rst_ni) begin
+                registers[i] <= defaults[i];
+            end else if (reg_gclk[i]) begin
+                registers[i] <= spi_data;
+            end
+        end */
+    end
+    
+    endgenerate
+    
+    always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (!rst_ni) begin
             spi_mode <= 1'b0;
             spi_cnt  <= '0;
-            spi_miso <= 1'b0;
             
-            color1 <= COLOR1_DEFAULT;
-            color2 <= COLOR2_DEFAULT;
-            color3 <= COLOR3_DEFAULT;
-            color4 <= COLOR4_DEFAULT;
-            
-            misc   <= MISC_DEFAULT;
-
-            first_data_sprite <= 1'b0;
+            load_register <= 1'b0;
         end else begin
-            if (!spi_cs_sync && spi_sclk_falling) begin
+            load_register <= 1'b0;
+        
+            // TODO enable?
+            if (!spi_cs && spi_sclk_falling && enable) begin
                 // Read the command
                 if (spi_mode == 1'b0) begin
-                    spi_cmd <= {spi_cmd[1:0], spi_mosi_sync};
+                    spi_cmd <= {spi_cmd[1:0], spi_mosi};
                     spi_cnt <= spi_cnt + 1;
                     
                     if (spi_cnt == 7) begin
                         spi_mode <= 1'b1;
                     end
-                // Write the data depending on the command
+                // Read the data
                 end else begin
-                    case (1'b1)
-                        spi_cmd_color1: color1 <= {color1[4:0], spi_mosi_sync};
-                        spi_cmd_color2: color2 <= {color2[4:0], spi_mosi_sync};
-                        spi_cmd_color3: color3 <= {color3[4:0], spi_mosi_sync};
-                        spi_cmd_color4: color4 <= {color4[4:0], spi_mosi_sync};
-                        spi_cmd_sprite_data: first_data_sprite <= 1'b1;
-                        spi_cmd_misc: misc <= {misc[3:0], spi_mosi_sync};
-                    endcase
-                    
+                    spi_data <= {spi_data[LEN_REGISTER-2:0], spi_mosi};
                     spi_cnt <= spi_cnt + 1;
 
-                    if (spi_cnt == 7 && !spi_sprite_mode) begin
+                    if (spi_cnt == 7) begin
                         spi_mode <= 1'b0;
+                        load_register <= 1'b1;
                     end
                 end
-            end
-            
-            // Echo back the previous values
-            if (!spi_cs_sync && spi_sclk_rising) begin
-                if (spi_mode == 1'b1) begin
-                    case (1'b1)
-                        spi_cmd_color1: spi_miso <= color1[5];
-                        spi_cmd_color2: spi_miso <= color2[5];
-                        spi_cmd_color3: spi_miso <= color3[5];
-                        spi_cmd_color4: spi_miso <= color4[5];
-                        spi_cmd_sprite_data: spi_miso <= sprite_data;
-                        spi_cmd_misc: spi_miso <= misc[4];
-                    endcase
-                end
-            end
-            
-            // Loading sprite data can be interrupted by rising cs
-            // after one bit was shifted into the sprite.
-            // This means it is possible to e.g. shift 100 bits and not only 8 at once
-            if (first_data_sprite && spi_sprite_mode && spi_cs_sync) begin
-                spi_mode <= 1'b0;
-                first_data_sprite <= 1'b0;
             end
         end
     end
     
-    // Enable sprite data shifting
-    assign spi_sprite_mode = spi_mode && spi_cmd_sprite_data;
-    assign spi_sprite_shift = spi_sprite_mode && spi_sclk_falling;
+    assign spi_miso = 1'b0;
     
-    // Indicate we want to shift a new position
-    assign shift_x = spi_mode && spi_cmd_sprite_x && spi_sclk_falling;
-    assign shift_y = spi_mode && spi_cmd_sprite_y && spi_sclk_falling;
+    // Assign registers
+    assign color1 = registers[0];
+    assign color2 = registers[1];
+    assign color3 = registers[2];
+    assign color4 = registers[3];
+    assign sprite_x = registers[4];
+    assign sprite_y = registers[5];
+    assign misc = registers[6];
     
 endmodule

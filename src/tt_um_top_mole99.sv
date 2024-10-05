@@ -14,6 +14,8 @@ module tt_um_top_mole99 (
     input  wire       rst_n     // reset_n - low to reset
 );
 
+    logic spi_mode;
+
     logic spi_sclk;
     logic spi_mosi;
     logic spi_miso;
@@ -28,8 +30,10 @@ module tt_um_top_mole99 (
     // TODO async reset, sync deassert
 
     top top_inst (
-        .clk        (clk),
-        .reset_n    (rst_n),
+        .clk_i      (clk),
+        .rst_ni     (rst_n),
+
+        .spi_mode   (spi_mode),
 
         // SPI signals
         .spi_sclk   (spi_sclk),
@@ -79,10 +83,11 @@ module tt_um_top_mole99 (
     assign uio_out[6] = 1'b0; assign uio_oe[6] = 1'b0; // - not used
     assign uio_out[7] = 1'b0; assign uio_oe[7] = 1'b0; // - not used
 
-    // Input PMOD - not used
+    // Input PMOD
+
+    assign spi_mode = ui_in[0];
 
     /*
-    ui_in[0]
     ui_in[1]
     ui_in[2]
     ui_in[3]
