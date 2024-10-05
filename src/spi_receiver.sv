@@ -100,14 +100,23 @@ module spi_receiver #(
         logic gclk;
         sg13g2_lgcp_1 sg13g2_lgcp_1_inst (clk_i, reg_enable[i] && load_register, reg_gclk[i]); //(reg_gclk[i], reg_enable[i] && load_register, clk_i);
         
-        // or use sg13g2_lgcp_1 sg13g2_lgcp_1_inst (GCLK, GATE, CLK);
+        // FF
+        always_ff @(posedge reg_gclk[i], negedge rst_ni) begin
+            if (!rst_ni) begin
+                registers[i] <= defaults[i];
+            end else begin
+                registers[i] <= spi_data;
+            end
+        end
+        
+        /* TODO use latches
         always_latch begin
             if (!rst_ni) begin
                 registers[i] <= defaults[i];
             end else if (reg_gclk[i]) begin
                 registers[i] <= spi_data;
             end
-        end
+        end */
     end
     
     endgenerate
