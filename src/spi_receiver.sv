@@ -97,8 +97,11 @@ module spi_receiver #(
         assign reg_enable[i] = spi_cmd == i;
         
         // Clock gating
-        logic gclk;
-        sg13g2_lgcp_1 sg13g2_lgcp_1_inst (clk_i, reg_enable[i] && load_register, reg_gclk[i]); //(reg_gclk[i], reg_enable[i] && load_register, clk_i);
+        sg13g2_lgcp_1 sg13g2_lgcp_1_inst (
+            .GCLK   (reg_gclk[i]),
+            .GATE   (reg_enable[i] && load_register),
+            .CLK    (clk_i)
+        );
         
         // FF
         always_ff @(posedge reg_gclk[i], negedge rst_ni) begin
