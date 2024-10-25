@@ -77,8 +77,7 @@ module top (
     localparam bit       ENABLE_SPRITE_BG_DEFAULT   = 1'b0;
     localparam bit       REDUCED_FREQ_DEFAULT       = 1'b0;
     
-    localparam bit [4:0] MISC_DEFAULT = {   REDUCED_FREQ_DEFAULT,
-                                            ENABLE_SPRITE_BG_DEFAULT,
+    localparam bit [3:0] MISC_DEFAULT = {   ENABLE_SPRITE_BG_DEFAULT,
                                             ENABLE_MOVEMENT_DEFAULT,
                                             BACKGROUND_DEFAULT
                                         };

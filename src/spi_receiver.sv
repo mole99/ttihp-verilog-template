@@ -63,17 +63,6 @@ module spi_receiver #(
     // 0 = cmd, 1 = data
     logic spi_mode;
     
-    typedef enum bit [2:0] {
-        CMD_SPRITE_DATA = 3'd0,
-        CMD_COLOR1      = 3'd1,
-        CMD_COLOR2      = 3'd2,
-        CMD_COLOR3      = 3'd3,
-        CMD_COLOR4      = 3'd4,
-        CMD_SPRITE_X    = 3'd5,
-        CMD_SPRITE_Y    = 3'd6,
-        CMD_MISC        = 3'd7
-    } spi_cmds_t;
-    
     logic load_register;
     
     logic [NUM_REGISTERS-1:0] reg_enable;
@@ -115,7 +104,7 @@ module spi_receiver #(
         // Latches
         always_latch begin
             if (!rst_ni) begin
-                registers[i] <= defaults[i];
+                registers[i] <= ~defaults[i];
             end else if (reg_gclk[i]) begin
                 registers[i] <= spi_data;
             end
