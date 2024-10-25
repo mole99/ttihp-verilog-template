@@ -121,7 +121,7 @@ module spi_receiver #(
     
     always_ff @(posedge clk_i, negedge rst_ni) begin
         if (!rst_ni) begin
-            spi_cnt <= '0;
+            spi_cmd <= '0;
             spi_data <= '0;
             spi_mode <= 1'b0;
             spi_cnt  <= '0;
