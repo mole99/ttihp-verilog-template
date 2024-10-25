@@ -40,7 +40,7 @@ module \$_DLATCH_PP0_ (input E, input R, input D, output Q);
 
   assign D_N = !D;
 
-  sg13g2_dlhrq_1 _TECHMAP_DLATCH_PN0 (
+  sg13g2_dlhrq_1 _TECHMAP_DLATCH_PP0 (
     .D(D_N),
     .Q(Q_N),
     .GATE(E),
@@ -58,7 +58,7 @@ module \$_DLATCH_NP0_ (input E, input R, input D, output Q);
   
   assign D_N = !D;
 
-  sg13g2_dllrq_1 _TECHMAP_DLATCH_NN0 (
+  sg13g2_dllrq_1 _TECHMAP_DLATCH_NP0 (
     .D(D_N),
     .Q(Q_N),
     .GATE_N(E),
