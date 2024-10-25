@@ -102,13 +102,19 @@ module spi_receiver #(
         end*/
         
         // Latches
-        always_latch begin
+        /*always_latch begin
             if (!rst_ni) begin
                 registers[i] <= i;//~defaults[i];
             end else if (reg_gclk[i]) begin
                 registers[i] <= spi_data;
             end
-        end
+        end*/
+
+        always @*
+        if (rst_ni == 1'b0)
+                registers[i] <= i;
+        else if (reg_gclk[i] == 1'b1)
+                registers[i] <= spi_data;
     end
     
     endgenerate
