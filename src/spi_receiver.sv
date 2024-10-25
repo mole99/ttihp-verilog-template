@@ -104,22 +104,22 @@ module spi_receiver #(
         );
         
         // FF
-        always_ff @(posedge reg_gclk[i], negedge rst_ni) begin
+        /*always_ff @(posedge reg_gclk[i], negedge rst_ni) begin
             if (!rst_ni) begin
                 registers[i] <= defaults[i];
             end else begin
                 registers[i] <= spi_data;
             end
-        end
+        end*/
         
-        /* TODO use latches
+        // Latches
         always_latch begin
             if (!rst_ni) begin
                 registers[i] <= defaults[i];
             end else if (reg_gclk[i]) begin
                 registers[i] <= spi_data;
             end
-        end */
+        end
     end
     
     endgenerate
